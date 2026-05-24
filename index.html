@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PharmaStock • Live Inventory</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="phlist.css">
+</head>
+<body data-theme="light">
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar" aria-label="Settings sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">
+        <i class="fas fa-cog"></i>
+        <span>Settings</span>
+      </div>
+      <button id="sidebar-close" class="icon-btn" aria-label="Close sidebar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <!-- TTS Section -->
+    <div class="sidebar-section">
+      <div class="section-label"><i class="fas fa-volume-up"></i> Text-to-Speech</div>
+      
+      <div class="form-group">
+        <label for="tts-voice">Voice</label>
+        <select id="tts-voice" class="glass-input"></select>
+      </div>
+
+      <div class="form-group">
+        <label for="tts-rate">Rate <span id="tts-rate-val" class="val">1.0</span></label>
+        <input id="tts-rate" type="range" min="0.5" max="2" step="0.1" value="1">
+      </div>
+
+      <div class="form-group">
+        <label for="tts-pitch">Pitch <span id="tts-pitch-val" class="val">1.0</span></label>
+        <input id="tts-pitch" type="range" min="0.5" max="2" step="0.1" value="1">
+      </div>
+
+      <div class="form-group">
+        <label for="tts-volume">Volume <span id="tts-volume-val" class="val">1.0</span></label>
+        <input id="tts-volume" type="range" min="0" max="1" step="0.1" value="1">
+      </div>
+
+      <button id="tts-test" class="gbtn w-full">
+        <i class="fas fa-play"></i> Test Voice
+      </button>
+    </div>
+
+    <div class="sidebar-footer">
+      <button id="theme-toggle" class="gbtn w-full">
+        <i class="fas fa-moon"></i> <span id="theme-label">Dark Mode</span>
+      </button>
+      <button id="reset-all" class="gbtn w-full danger">
+        <i class="fas fa-undo"></i> Reset All Data
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <button id="sidebar-toggle" class="icon-btn" aria-label="Open settings">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div class="brand">
+          <i class="fas fa-pills brand-icon"></i>
+          <div>
+            <div class="brand-name">PharmaStock</div>
+            <div class="brand-sub">Live Inventory Tracker</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current Date Display -->
+      <div class="current-date-card">
+        <div class="date-label">Current Date</div>
+        <div id="current-date" class="date-value">—</div>
+      </div>
+
+      <div class="header-actions">
+        <button id="add-med-btn" class="gbtn primary">
+          <i class="fas fa-plus"></i> <span>Add Medication</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar glass-card">
+      <div class="stat">
+        <div class="stat-value" id="stat-total-meds">—</div>
+        <div class="stat-label">Medications</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-total-stock">—</div>
+        <div class="stat-label">Total Units</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value warning" id="stat-low">—</div>
+        <div class="stat-label">Low Stock</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value danger" id="stat-critical">—</div>
+        <div class="stat-label">Critical / Out</div>
+      </div>
+    </div>
+
+    <!-- Search & Filters -->
+    <div class="controls-row">
+      <div class="search-box">
+        <i class="fas fa-search"></i>
+        <input type="text" id="search-input" placeholder="Search medications, categories, or uses...">
+        <button id="clear-search" class="icon-btn" style="display:none;"><i class="fas fa-times"></i></button>
+      </div>
+
+      <div class="filter-group">
+        <select id="category-filter" class="glass-input">
+          <option value="">All Categories</option>
+        </select>
+      </div>
+
+      <div class="view-toggle">
+        <button id="view-grid" class="icon-btn active" title="Grid view"><i class="fas fa-th-large"></i></button>
+        <button id="view-list" class="icon-btn" title="Compact list"><i class="fas fa-list"></i></button>
+      </div>
+    </div>
+
+    <!-- Medication Grid -->
+    <main id="med-grid" class="med-grid">
+      <!-- Populated dynamically by JS -->
+    </main>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state glass-card" style="display:none;">
+      <i class="fas fa-pills fa-3x"></i>
+      <h3>No medications found</h3>
+      <p>Try adjusting your search or filters, or add a new medication.</p>
+      <button id="empty-add-btn" class="gbtn primary">Add Medication</button>
+    </div>
+  </div>
+
+  <!-- Add/Edit Medication Modal -->
+  <div id="med-modal" class="modal" aria-hidden="true">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Add New Medication</h3>
+        <button id="modal-close" class="icon-btn"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="med-name">Medication Name *</label>
+            <input id="med-name" type="text" class="glass-input" placeholder="e.g. Aspirin 81mg" required>
+          </div>
+
+          <div class="form-group">
+            <label for="med-category">Category *</label>
+            <input id="med-category" type="text" class="glass-input" placeholder="e.g. Antiplatelet" required>
+          </div>
+
+          <div class="form-group">
+            <label for="med-initial">Initial Stock *</label>
+            <input id="med-initial" type="number" class="glass-input" min="1" value="100" required>
+          </div>
+
+          <div class="form-group">
+            <label for="med-daily">Daily Reduction</label>
+            <input id="med-daily" type="number" class="glass-input" min="0" step="0.1" value="1">
+          </div>
+
+          <div class="form-group">
+            <label for="med-dosage">Common Dosage</label>
+            <input id="med-dosage" type="text" class="glass-input" placeholder="e.g. 81mg daily">
+          </div>
+
+          <div class="form-group full">
+            <label for="med-description">Short Description</label>
+            <textarea id="med-description" class="glass-input" rows="2" placeholder="Brief purpose and notes..."></textarea>
+          </div>
+
+          <div class="form-group full">
+            <label for="med-uses">Key Uses (comma separated)</label>
+            <input id="med-uses" type="text" class="glass-input" placeholder="Pain relief, Heart protection, Fever">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-cancel" class="gbtn ghost">Cancel</button>
+        <button id="modal-save" class="gbtn primary">Save Medication</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBDu--tj4fnTjP9kOmpclC2av_rtLaDCgk",
+      authDomain: "pharma-stock-tracker.firebaseapp.com",
+      projectId: "pharma-stock-tracker",
+      storageBucket: "pharma-stock-tracker.firebasestorage.app",
+      messagingSenderId: "1045021586674",
+      appId: "1:1045021586674:web:77a33644d1d29d11300c6b"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    console.log("✅ Firebase connected successfully");
+  </script>
+
+  <script src="phlist.js"></script>
+</body>
+</html>
