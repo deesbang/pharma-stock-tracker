@@ -1,5 +1,5 @@
 // ============================================
-// PharmaStock - Full Version with Firebase
+// PharmaStock - Full Version with Firebase + Daily Reduction
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -54,6 +54,27 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentView = 'grid';
 
   // ==========================================
+  // Daily Reduction System (Base Date)
+  // ==========================================
+  let BASE_DATE = localStorage.getItem('pharma_baseDate') 
+    ? new Date(localStorage.getItem('pharma_baseDate')) 
+    : new Date();
+
+  function getDaysPassed() {
+    const now = new Date();
+    const diffTime = Math.abs(now - BASE_DATE);
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  }
+
+  function resetBaseDate() {
+    BASE_DATE = new Date();
+    localStorage.setItem('pharma_baseDate', BASE_DATE.toISOString());
+    renderAll();
+    showToast("Base date reset to today");
+  }
+
+  // ==========================================
   // Firebase Real-time Loading
   // ==========================================
   function loadFromFirestore() {
@@ -67,11 +88,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // Stock Helpers (pure Firebase values)
+  // Stock Calculation (with daily reduction)
   // ==========================================
   function getEffectiveStock(med) {
-    // After removing time simulation, stock is initialCount + adjustment from Firebase
-    return Math.max(0, (med.initialCount || 0) + (med.adjustment || 0));
+    const days = getDaysPassed();
+    const base = Math.max(0, (med.initialCount || 0) - (days * (med.dailyReduction || 1)));
+    const delta = med.adjustment || 0;
+    return Math.max(0, Math.round(base + delta));
   }
 
   function getPercentRemaining(med) {
@@ -112,9 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!els.currentDate) return;
     const today = new Date();
     els.currentDate.textContent = today.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+      year: 'numeric', month: 'short', day: 'numeric'
     });
   }
 
@@ -157,13 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const daysLeft = getDaysLeftEstimate(med);
       const status = getStockStatus(med);
       const isCritical = status === 'critical';
+      const restockAmount = (med.name || '').toLowerCase() === 'nexium' ? 28 : 30;
 
       const card = document.createElement('div');
       card.className = `med-card ${status}`;
       card.dataset.id = med.id;
-
-      // Special case for Nexium restock amount
-      const restockAmount = (med.name || '').toLowerCase() === 'nexium' ? 28 : 30;
 
       card.innerHTML = `
         <div class="med-header">
@@ -253,7 +272,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // TTS
   // ==========================================
   function setupTTS() {
-    // Basic TTS setup
     if (els.ttsTest) {
       els.ttsTest.addEventListener('click', () => {
         const utterance = new SpeechSynthesisUtterance("This is a test of the pharmaceutical stock tracker.");
@@ -288,6 +306,12 @@ document.addEventListener('DOMContentLoaded', () => {
     els.sidebarClose?.addEventListener('click', () => els.sidebar.classList.remove('open'));
 
     els.addBtn?.addEventListener('click', () => alert("Add Medication feature coming soon!"));
+
+    // Add Reset Base Date button functionality
+    const resetDateBtn = document.getElementById('reset-base-date');
+    if (resetDateBtn) {
+      resetDateBtn.addEventListener('click', resetBaseDate);
+    }
   }
 
   function showToast(message) {
@@ -307,14 +331,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTTS();
     setupEventListeners();
 
-    updateCurrentDate(); // Show today's date immediately
+    updateCurrentDate();
 
     // Theme
     const savedTheme = localStorage.getItem('pharma_theme') || 'light';
     document.body.setAttribute('data-theme', savedTheme);
     els.themeLabel.textContent = savedTheme === 'light' ? 'Dark Mode' : 'Light Mode';
 
-    console.log('%c[PharmaStock] Full version with Firebase initialized', 'color:#0ea47a');
+    console.log('%c[PharmaStock] Full version with Firebase + Daily Reduction initialized', 'color:#0ea47a');
   }
 
   init();
