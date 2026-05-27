@@ -53,22 +53,52 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentFilter = { search: '', category: '' };
   let currentView = 'grid';
 
+  function injectResetBaseDateButton() {
+    const headerActions = document.querySelector('.app-header .header-actions');
+    if (!headerActions || document.getElementById('reset-base-date')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'reset-base-date';
+    btn.className = 'icon-btn';
+    btn.title = 'Reset Base Date';
+    btn.setAttribute('aria-label', 'Reset base date for daily stock reduction calculation');
+    btn.innerHTML = '<i class="fas fa-undo"></i>';
+
+    // Insert before the Add Medication button (preserves exact position of all existing elements)
+    const addBtn = els.addBtn;
+    if (addBtn && addBtn.parentNode === headerActions) {
+      headerActions.insertBefore(btn, addBtn);
+    } else {
+      headerActions.appendChild(btn);
+    }
+
+    // Wire click handler (the guard in setupEventListeners will also attach if present — harmless)
+    btn.addEventListener('click', resetBaseDate);
+  }
+
   // ==========================================
   // Daily Reduction System (Base Date)
   // ==========================================
-  let BASE_DATE = localStorage.getItem('pharma_baseDate') 
-    ? new Date(localStorage.getItem('pharma_baseDate')) 
-    : new Date();
+  function normalizeToStartOfDay(d) {
+    const date = new Date(d);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  let BASE_DATE = localStorage.getItem('pharma_baseDate')
+    ? normalizeToStartOfDay(localStorage.getItem('pharma_baseDate'))
+    : normalizeToStartOfDay(new Date());
 
   function getDaysPassed() {
-    const now = new Date();
-    const diffTime = Math.abs(now - BASE_DATE);
+    const today = normalizeToStartOfDay(new Date());
+    const base = normalizeToStartOfDay(BASE_DATE);
+    const diffTime = today.getTime() - base.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return Math.max(0, diffDays);
   }
 
   function resetBaseDate() {
-    BASE_DATE = new Date();
+    BASE_DATE = normalizeToStartOfDay(new Date());
     localStorage.setItem('pharma_baseDate', BASE_DATE.toISOString());
     renderAll();
     showToast("Base date reset to today");
@@ -90,12 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
   // Stock Calculation (with daily reduction)
   // ==========================================
-  function getEffectiveStock(med) {
-    const days = getDaysPassed();
-    const base = Math.max(0, (med.initialCount || 0) - (days * (med.dailyReduction || 1)));
-    const delta = med.adjustment || 0;
-    return Math.max(0, Math.round(base + delta));
-  }
+function getEffectiveStock(med) {
+  const days = getDaysPassed();
+  const reduction = Number(med.dailyReduction) || 0;
+  const base = Number(med.initialCount) || 0;
+  const adj = Number(med.adjustment) || 0;
+  return Math.max(0, base - (days * reduction) + adj);
+}
 
   function getPercentRemaining(med) {
     return Math.max(0, Math.min(100, Math.round((getEffectiveStock(med) / med.initialCount) * 100)));
@@ -327,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialization
   // ==========================================
   function init() {
+    injectResetBaseDateButton();
     loadFromFirestore();
     setupTTS();
     setupEventListeners();
