@@ -241,7 +241,12 @@ document.addEventListener('DOMContentLoaded', () => {
       snapshot.forEach(doc => {
         meds.push({ id: doc.id, ...doc.data() });
       });
+
       renderAll();
+
+      // After rendering, check if we need to record any daily reductions that occurred
+      // while the app was closed. This populates the activity log with proper timestamps.
+      processDailyReductions();
     });
   }
 
@@ -438,6 +443,67 @@ function getEffectiveStock(med) {
     });
   }
 
+  // Logs daily reductions as separate history events with accurate past timestamps
+  async function logDailyReduction(medId, medName, amount, reductionDate) {
+    try {
+      await db.collection('stockHistory').add({
+        medId,
+        medName: medName || 'Unknown',
+        type: 'daily_reduction',
+        amount: -amount,                    // always negative
+        timestamp: firebase.firestore.Timestamp.fromDate(reductionDate),
+        note: 'Automatic daily reduction'
+      });
+    } catch (err) {
+      console.warn('[History] Failed to log daily reduction:', err);
+    }
+  }
+
+  // Called after meds load — writes any unreported daily reductions into the activity log
+  async function processDailyReductions() {
+    const currentDays = getDaysPassed();
+    const baseDate = globalBaseDate || normalizeToStartOfDay(new Date());
+
+    const promises = [];
+
+    for (const med of meds) {
+      if (!med.dailyReduction || med.dailyReduction <= 0) continue;
+
+      const alreadyLogged = med.reductionDaysLogged || 0;
+
+      if (currentDays > alreadyLogged) {
+        const daysToLog = currentDays - alreadyLogged;
+
+        for (let i = 0; i < daysToLog; i++) {
+          const dayNumber = alreadyLogged + i + 1; // which day since base
+          const reductionDate = new Date(baseDate);
+          reductionDate.setDate(reductionDate.getDate() + dayNumber);
+
+          promises.push(
+            logDailyReduction(med.id, med.name, med.dailyReduction, reductionDate)
+          );
+        }
+
+        // Update the med document so we don't log the same days again
+        const newLoggedCount = currentDays;
+        promises.push(
+          medsCollection.doc(med.id).update({
+            reductionDaysLogged: newLoggedCount
+          })
+        );
+
+        // Update local copy immediately so next render is correct
+        med.reductionDaysLogged = newLoggedCount;
+      }
+    }
+
+    if (promises.length > 0) {
+      await Promise.all(promises);
+      console.log(`[History] Logged ${promises.length / 2} daily reduction events across medications`);
+      renderAll(); // refresh UI in case anything changed
+    }
+  }
+
   function changeStock(id, delta) {
     medsCollection.doc(id).update({
       adjustment: firebase.firestore.FieldValue.increment(delta)
@@ -531,15 +597,25 @@ function getEffectiveStock(med) {
     } else {
       html += '<div style="padding: 0 16px;">';
       historyItems.forEach(item => {
-        const isRestock = item.type === 'restock';
-        const sign = isRestock ? '+' : '';
-        const color = isRestock ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
+        let label = '';
+        let color = '';
+
+        if (item.type === 'daily_reduction') {
+          label = 'Daily Reduction';
+          color = '#f59e0b'; // amber/warning color
+        } else {
+          const isRestock = item.type === 'restock';
+          label = isRestock ? 'Restocked' : 'Dispensed';
+          color = isRestock ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
+        }
+
+        const sign = item.amount > 0 ? '+' : '';
 
         html += `
           <div style="display:flex; justify-content:space-between; padding:12px 8px; border-bottom:1px solid rgba(255,255,255,0.08);">
             <div>
               <div style="font-weight:500; color:${color};">
-                ${isRestock ? 'Restocked' : 'Dispensed'} 
+                ${label} 
                 <span style="font-weight:600;">${sign}${item.amount}</span>
               </div>
               <div style="font-size:12px; opacity:0.6; margin-top:2px;">
@@ -627,9 +703,19 @@ function getEffectiveStock(med) {
     } else {
       html += `<div style="padding:0 16px;">`;
       historyItems.forEach(item => {
-        const isRestock = item.type === 'restock';
-        const color = isRestock ? '#22c55e' : '#f87171';
-        const sign = isRestock ? '+' : '';
+        let label = '';
+        let color = '';
+
+        if (item.type === 'daily_reduction') {
+          label = 'Daily Reduction';
+          color = '#f59e0b';
+        } else {
+          const isRestock = item.type === 'restock';
+          label = isRestock ? 'Restocked' : 'Dispensed';
+          color = isRestock ? '#22c55e' : '#f87171';
+        }
+
+        const sign = item.amount > 0 ? '+' : '';
 
         html += `
           <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 8px;border-bottom:1px solid rgba(255,255,255,0.07);">
@@ -639,7 +725,7 @@ function getEffectiveStock(med) {
             </div>
             <div style="text-align:right;white-space:nowrap;">
               <div style="color:${color};font-weight:600;">
-                ${isRestock ? 'Restocked' : 'Dispensed'} ${sign}${item.amount}
+                ${label} ${sign}${item.amount}
               </div>
             </div>
           </div>
