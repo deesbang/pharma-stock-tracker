@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // Daily Reduction System (Base Date)
+  // Daily Reduction System (Base Date) - Now Global via Firestore
   // ==========================================
   function normalizeToStartOfDay(d) {
     const date = new Date(d);
@@ -109,23 +109,45 @@ document.addEventListener('DOMContentLoaded', () => {
     return date;
   }
 
-  let BASE_DATE = localStorage.getItem('pharma_baseDate')
-    ? normalizeToStartOfDay(localStorage.getItem('pharma_baseDate'))
-    : normalizeToStartOfDay(new Date());
+  // Global base date loaded from Firestore (settings/baseDate)
+  // This makes the daily reduction calculation consistent across all devices
+  let globalBaseDate = null;
 
   function getDaysPassed() {
+    const base = globalBaseDate || normalizeToStartOfDay(new Date());
     const today = normalizeToStartOfDay(new Date());
-    const base = normalizeToStartOfDay(BASE_DATE);
     const diffTime = today.getTime() - base.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return Math.max(0, diffDays);
   }
 
+  function listenToGlobalBaseDate() {
+    db.collection('settings').doc('baseDate').onSnapshot((doc) => {
+      if (doc.exists && doc.data().date) {
+        const raw = doc.data().date;
+        globalBaseDate = normalizeToStartOfDay(raw.toDate ? raw.toDate() : raw);
+      } else {
+        // No global base date set yet — default to today (will be set on first reset)
+        globalBaseDate = normalizeToStartOfDay(new Date());
+      }
+      // Re-render so all devices see updated stock numbers immediately
+      renderAll();
+    }, (error) => {
+      console.error("Error listening to global base date:", error);
+    });
+  }
+
   function resetBaseDate() {
-    BASE_DATE = normalizeToStartOfDay(new Date());
-    localStorage.setItem('pharma_baseDate', BASE_DATE.toISOString());
-    renderAll();
-    showToast("Base date reset to today");
+    const newDate = normalizeToStartOfDay(new Date());
+
+    db.collection('settings').doc('baseDate').set({
+      date: firebase.firestore.Timestamp.fromDate(newDate)
+    }).then(() => {
+      showToast("Base date reset to today (synced across all devices)");
+    }).catch((err) => {
+      console.error("Failed to reset global base date:", err);
+      showToast("Failed to reset base date");
+    });
   }
 
   // ==========================================
@@ -622,6 +644,10 @@ function getEffectiveStock(med) {
   // ==========================================
   function init() {
     injectHeaderButtons();
+
+    // Start listening to the global base date (this makes daily reduction consistent across devices)
+    listenToGlobalBaseDate();
+
     loadFromFirestore();
     setupTTS();
     setupEventListeners();
