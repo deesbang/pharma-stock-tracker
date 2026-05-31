@@ -3,7 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0ea47a">
+  <meta name="description" content="Live pharmaceutical inventory tracker with automatic daily reduction">
+
   <title>PharmaStock • Live Inventory</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- iOS PWA Support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PharmaStock">
+
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="phlist.css">
@@ -53,6 +65,9 @@
     <div class="sidebar-footer">
       <button id="theme-toggle" class="gbtn w-full">
         <i class="fas fa-moon"></i> <span id="theme-label">Dark Mode</span>
+      </button>
+      <button id="enable-notifications" class="gbtn w-full">
+        <i class="fas fa-bell"></i> Enable Critical Alerts
       </button>
       <button id="reset-all" class="gbtn w-full danger">
         <i class="fas fa-undo"></i> Reset All Data

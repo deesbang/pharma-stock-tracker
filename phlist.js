@@ -221,6 +221,9 @@ function getEffectiveStock(med) {
     renderCategoryFilterOptions();
     renderGrid();
     updateStats();
+
+    // Trigger critical stock notifications (if permission granted)
+    checkAndNotifyCriticalStock();
   }
 
   function renderCategoryFilterOptions() {
@@ -621,6 +624,19 @@ function getEffectiveStock(med) {
     els.sidebarToggle?.addEventListener('click', () => els.sidebar.classList.add('open'));
     els.sidebarClose?.addEventListener('click', () => els.sidebar.classList.remove('open'));
 
+    // Enable critical stock notifications
+    els.enableNotifications = document.getElementById('enable-notifications');
+    els.enableNotifications?.addEventListener('click', async () => {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        showToast('Critical stock alerts enabled!');
+        els.enableNotifications.style.opacity = '0.5';
+        els.enableNotifications.textContent = 'Critical Alerts Enabled';
+      } else {
+        showToast('Notification permission denied');
+      }
+    });
+
     els.addBtn?.addEventListener('click', () => alert("Add Medication feature coming soon!"));
 
     // Add Reset Base Date button functionality
@@ -640,6 +656,101 @@ function getEffectiveStock(med) {
   }
 
   // ==========================================
+  // PWA Install + Notifications (Critical Stock)
+  // ==========================================
+  let deferredPrompt;
+
+  // Handle PWA install prompt
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    console.log('[PWA] Install prompt available');
+
+    // Optional: Show an install button in the UI
+    showInstallButton();
+  });
+
+  function showInstallButton() {
+    // Inject a subtle install button in the header if possible
+    const headerActions = document.querySelector('.app-header .header-actions');
+    if (!headerActions || document.getElementById('install-app-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'install-app-btn';
+    btn.className = 'icon-btn';
+    btn.title = 'Install PharmaStock App';
+    btn.innerHTML = '<i class="fas fa-download"></i>';
+
+    const historyBtn = document.getElementById('global-history-btn');
+    if (historyBtn) {
+      headerActions.insertBefore(btn, historyBtn);
+    } else {
+      headerActions.appendChild(btn);
+    }
+
+    btn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log('[PWA] User install choice:', outcome);
+      btn.remove();
+      deferredPrompt = null;
+    });
+  }
+
+  // Request notification permission + send critical alert
+  async function requestNotificationPermission() {
+    if (!('Notification' in window)) {
+      alert('This browser does not support desktop notifications');
+      return false;
+    }
+
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+
+  function notifyCriticalStock(med) {
+    if (Notification.permission !== 'granted') return;
+
+    const title = `⚠️ Critical Stock: ${med.name}`;
+    const body = `Only ${getEffectiveStock(med)} units remaining. Immediate attention needed.`;
+
+    try {
+      new Notification(title, {
+        body,
+        icon: 'icons/icon-192.png',
+        tag: `critical-${med.id}`,
+        requireInteraction: false
+      });
+    } catch (err) {
+      console.warn('Notification failed:', err);
+    }
+  }
+
+  // Check for newly critical items and notify
+  let previousCriticalIds = new Set();
+
+  function checkAndNotifyCriticalStock() {
+    if (Notification.permission !== 'granted') return;
+
+    const currentlyCritical = meds.filter(m => getStockStatus(m) === 'critical');
+
+    currentlyCritical.forEach(med => {
+      if (!previousCriticalIds.has(med.id)) {
+        notifyCriticalStock(med);
+        previousCriticalIds.add(med.id);
+      }
+    });
+
+    // Remove meds that are no longer critical
+    previousCriticalIds = new Set(
+      [...previousCriticalIds].filter(id => 
+        currentlyCritical.some(m => m.id === id)
+      )
+    );
+  }
+
+  // ==========================================
   // Initialization
   // ==========================================
   function init() {
@@ -647,6 +758,13 @@ function getEffectiveStock(med) {
 
     // Start listening to the global base date (this makes daily reduction consistent across devices)
     listenToGlobalBaseDate();
+
+    // Register Service Worker (required for PWA install + future push notifications)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('[PWA] Service Worker registered', reg.scope))
+        .catch(err => console.warn('[PWA] Service Worker registration failed:', err));
+    }
 
     loadFromFirestore();
     setupTTS();
@@ -658,6 +776,13 @@ function getEffectiveStock(med) {
     const savedTheme = localStorage.getItem('pharma_theme') || 'light';
     document.body.setAttribute('data-theme', savedTheme);
     els.themeLabel.textContent = savedTheme === 'light' ? 'Dark Mode' : 'Light Mode';
+
+    // Optionally prompt for notifications (user can also trigger manually)
+    setTimeout(() => {
+      if (Notification.permission === 'default') {
+        console.log('[Notifications] User has not yet decided on notifications');
+      }
+    }, 8000);
 
     console.log('%c[PharmaStock] Full version with Firebase + Daily Reduction initialized', 'color:#0ea47a');
   }
