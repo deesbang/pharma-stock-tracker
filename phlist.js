@@ -53,27 +53,51 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentFilter = { search: '', category: '' };
   let currentView = 'grid';
 
-  function injectResetBaseDateButton() {
+  function injectHeaderButtons() {
     const headerActions = document.querySelector('.app-header .header-actions');
-    if (!headerActions || document.getElementById('reset-base-date')) return;
+    if (!headerActions) return;
 
-    const btn = document.createElement('button');
-    btn.id = 'reset-base-date';
-    btn.className = 'icon-btn';
-    btn.title = 'Reset Base Date';
-    btn.setAttribute('aria-label', 'Reset base date for daily stock reduction calculation');
-    btn.innerHTML = '<i class="fas fa-undo"></i>';
+    // Reset Base Date button
+    if (!document.getElementById('reset-base-date')) {
+      const resetBtn = document.createElement('button');
+      resetBtn.id = 'reset-base-date';
+      resetBtn.className = 'icon-btn';
+      resetBtn.title = 'Reset Base Date';
+      resetBtn.setAttribute('aria-label', 'Reset base date for daily stock reduction calculation');
+      resetBtn.innerHTML = '<i class="fas fa-undo"></i>';
 
-    // Insert before the Add Medication button (preserves exact position of all existing elements)
-    const addBtn = els.addBtn;
-    if (addBtn && addBtn.parentNode === headerActions) {
-      headerActions.insertBefore(btn, addBtn);
-    } else {
-      headerActions.appendChild(btn);
+      const addBtn = els.addBtn;
+      if (addBtn && addBtn.parentNode === headerActions) {
+        headerActions.insertBefore(resetBtn, addBtn);
+      } else {
+        headerActions.appendChild(resetBtn);
+      }
+      resetBtn.addEventListener('click', resetBaseDate);
     }
 
-    // Wire click handler (the guard in setupEventListeners will also attach if present — harmless)
-    btn.addEventListener('click', resetBaseDate);
+    // Global History / Activity Log button
+    if (!document.getElementById('global-history-btn')) {
+      const historyBtn = document.createElement('button');
+      historyBtn.id = 'global-history-btn';
+      historyBtn.className = 'icon-btn';
+      historyBtn.title = 'Activity Log';
+      historyBtn.setAttribute('aria-label', 'View stock change history log');
+      historyBtn.innerHTML = '<i class="fas fa-history"></i>';
+
+      const resetBtn = document.getElementById('reset-base-date');
+      if (resetBtn && resetBtn.parentNode === headerActions) {
+        headerActions.insertBefore(historyBtn, resetBtn);
+      } else {
+        const addBtn = els.addBtn;
+        if (addBtn && addBtn.parentNode === headerActions) {
+          headerActions.insertBefore(historyBtn, addBtn);
+        } else {
+          headerActions.appendChild(historyBtn);
+        }
+      }
+
+      historyBtn.addEventListener('click', showGlobalHistory);
+    }
   }
 
   // ==========================================
@@ -251,6 +275,7 @@ function getEffectiveStock(med) {
   }
 
   function attachCardListeners(card, med) {
+    // Action buttons - stop propagation so card click doesn't fire
     card.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopImmediatePropagation();
@@ -266,6 +291,12 @@ function getEffectiveStock(med) {
         else if (action === 'speak') speakMed(med);
       });
     });
+
+    // Clicking anywhere on the card opens the history log
+    card.addEventListener('click', () => {
+      showHistoryForMed(med.id, med.name);
+    });
+    card.style.cursor = 'pointer';
   }
 
   function filterMeds() {
@@ -285,10 +316,26 @@ function getEffectiveStock(med) {
   // ==========================================
   // Stock Updates (Firebase)
   // ==========================================
+  function logStockChange(medId, type, amount) {
+    const med = meds.find(m => m.id === medId);
+    if (!med) return;
+
+    db.collection('stockHistory').add({
+      medId: medId,
+      medName: med.name || 'Unknown',
+      type: type,                    // 'dispense' | 'restock'
+      amount: amount,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(err => {
+      console.warn('[History] Failed to log stock change:', err);
+    });
+  }
+
   function changeStock(id, delta) {
     medsCollection.doc(id).update({
       adjustment: firebase.firestore.FieldValue.increment(delta)
     }).then(() => {
+      logStockChange(id, delta > 0 ? 'restock' : 'dispense', delta);
       showToast(delta > 0 ? `+${delta} units` : `${Math.abs(delta)} dispensed`);
     });
   }
@@ -296,7 +343,223 @@ function getEffectiveStock(med) {
   function restockMedication(id, amount = 30) {
     medsCollection.doc(id).update({
       adjustment: firebase.firestore.FieldValue.increment(amount)
-    }).then(() => showToast(`+${amount} restocked`));
+    }).then(() => {
+      logStockChange(id, 'restock', amount);
+      showToast(`+${amount} restocked`);
+    });
+  }
+
+  // ==========================================
+  // History Logging & Viewing
+  // ==========================================
+  async function fetchMedHistory(medId, limit = 100) {
+    try {
+      const snapshot = await db.collection('stockHistory')
+        .where('medId', '==', medId)
+        .orderBy('timestamp', 'desc')
+        .limit(limit)
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (err) {
+      console.error('Failed to fetch history:', err);
+      return [];
+    }
+  }
+
+  function formatHistoryTimestamp(ts) {
+    if (!ts) return 'Unknown time';
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function createHistoryModal(medId, medName, historyItems) {
+    // Remove any existing modal
+    const existing = document.getElementById('history-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'history-modal';
+    modal.style.cssText = `
+      position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999; padding: 20px;
+    `;
+
+    const content = document.createElement('div');
+    content.className = 'glass-card';
+    content.style.cssText = `
+      width: 100%; max-width: 620px; max-height: 80vh;
+      overflow: hidden; display: flex; flex-direction: column;
+      border-radius: 16px;
+    `;
+
+    let html = `
+      <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:13px; opacity:0.7;">History Log</div>
+          <div style="font-size:18px; font-weight:600;">${medName}</div>
+        </div>
+        <button id="history-close" class="icon-btn" style="font-size:20px;">&times;</button>
+      </div>
+      <div style="flex:1; overflow:auto; padding: 8px 0;">
+    `;
+
+    if (!historyItems || historyItems.length === 0) {
+      html += `
+        <div style="padding: 40px 20px; text-align:center; opacity:0.6;">
+          No history yet for this medication.<br>
+          <small>Changes will appear here automatically.</small>
+        </div>
+      `;
+    } else {
+      html += '<div style="padding: 0 16px;">';
+      historyItems.forEach(item => {
+        const isRestock = item.type === 'restock';
+        const sign = isRestock ? '+' : '';
+        const color = isRestock ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
+
+        html += `
+          <div style="display:flex; justify-content:space-between; padding:12px 8px; border-bottom:1px solid rgba(255,255,255,0.08);">
+            <div>
+              <div style="font-weight:500; color:${color};">
+                ${isRestock ? 'Restocked' : 'Dispensed'} 
+                <span style="font-weight:600;">${sign}${item.amount}</span>
+              </div>
+              <div style="font-size:12px; opacity:0.6; margin-top:2px;">
+                ${formatHistoryTimestamp(item.timestamp)}
+              </div>
+            </div>
+            <div style="font-size:13px; opacity:0.5; align-self:center;">
+              ${item.type}
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+
+    // Footer
+    html += `
+      <div style="padding:12px 20px; border-top:1px solid rgba(255,255,255,0.1); display:flex; gap:8px; justify-content:flex-end;">
+        <button id="history-close-btn" class="gbtn ghost">Close</button>
+      </div>
+    `;
+
+    content.innerHTML = html;
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    // Close handlers
+    const close = () => modal.remove();
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) close();
+    });
+    content.querySelector('#history-close')?.addEventListener('click', close);
+    content.querySelector('#history-close-btn')?.addEventListener('click', close);
+  }
+
+  async function showHistoryForMed(medId, medName) {
+    showToast(`Loading history for ${medName}...`, 900);
+
+    const history = await fetchMedHistory(medId);
+    createHistoryModal(medId, medName, history);
+  }
+
+  // --- Global recent activity ---
+  async function fetchRecentHistory(limit = 40) {
+    try {
+      const snapshot = await db.collection('stockHistory')
+        .orderBy('timestamp', 'desc')
+        .limit(limit)
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (err) {
+      console.error('Failed to fetch recent history:', err);
+      return [];
+    }
+  }
+
+  function createGlobalHistoryModal(historyItems) {
+    const existing = document.getElementById('history-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'history-modal';
+    modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;`;
+
+    const content = document.createElement('div');
+    content.className = 'glass-card';
+    content.style.cssText = `width:100%;max-width:680px;max-height:82vh;overflow:hidden;display:flex;flex-direction:column;border-radius:16px;`;
+
+    let html = `
+      <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:18px;font-weight:600;">Recent Activity Log</div>
+        <button id="history-close" class="icon-btn" style="font-size:22px;">&times;</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:4px 0;">
+    `;
+
+    if (!historyItems.length) {
+      html += `<div style="padding:50px 20px;text-align:center;opacity:0.6;">No activity logged yet.</div>`;
+    } else {
+      html += `<div style="padding:0 16px;">`;
+      historyItems.forEach(item => {
+        const isRestock = item.type === 'restock';
+        const color = isRestock ? '#22c55e' : '#f87171';
+        const sign = isRestock ? '+' : '';
+
+        html += `
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 8px;border-bottom:1px solid rgba(255,255,255,0.07);">
+            <div style="min-width:0;">
+              <div style="font-weight:500;">${item.medName || 'Unknown'}</div>
+              <div style="font-size:12px;opacity:0.55;margin-top:1px;">${formatHistoryTimestamp(item.timestamp)}</div>
+            </div>
+            <div style="text-align:right;white-space:nowrap;">
+              <div style="color:${color};font-weight:600;">
+                ${isRestock ? 'Restocked' : 'Dispensed'} ${sign}${item.amount}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>
+      <div style="padding:12px 20px;border-top:1px solid rgba(255,255,255,0.1);text-align:right;">
+        <button id="history-close-btn" class="gbtn ghost">Close</button>
+      </div>`;
+
+    content.innerHTML = html;
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+    content.querySelector('#history-close')?.addEventListener('click', close);
+    content.querySelector('#history-close-btn')?.addEventListener('click', close);
+  }
+
+  async function showGlobalHistory() {
+    showToast('Loading recent activity...', 800);
+    const recent = await fetchRecentHistory(40);
+    createGlobalHistoryModal(recent);
   }
 
   // ==========================================
@@ -358,7 +621,7 @@ function getEffectiveStock(med) {
   // Initialization
   // ==========================================
   function init() {
-    injectResetBaseDateButton();
+    injectHeaderButtons();
     loadFromFirestore();
     setupTTS();
     setupEventListeners();
