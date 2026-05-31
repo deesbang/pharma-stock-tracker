@@ -57,22 +57,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerActions = document.querySelector('.app-header .header-actions');
     if (!headerActions) return;
 
-    // Reset Base Date button
-    if (!document.getElementById('reset-base-date')) {
-      const resetBtn = document.createElement('button');
-      resetBtn.id = 'reset-base-date';
-      resetBtn.className = 'icon-btn';
-      resetBtn.title = 'Reset Base Date';
-      resetBtn.setAttribute('aria-label', 'Reset base date for daily stock reduction calculation');
-      resetBtn.innerHTML = '<i class="fas fa-undo"></i>';
+    // Theme toggle icon (main screen)
+    if (!document.getElementById('header-theme-toggle')) {
+      const themeBtn = document.createElement('button');
+      themeBtn.id = 'header-theme-toggle';
+      themeBtn.className = 'icon-btn';
+      themeBtn.title = 'Toggle theme';
+      themeBtn.setAttribute('aria-label', 'Toggle light/dark mode');
 
-      const addBtn = els.addBtn;
-      if (addBtn && addBtn.parentNode === headerActions) {
-        headerActions.insertBefore(resetBtn, addBtn);
+      const updateThemeIcon = () => {
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
+        themeBtn.innerHTML = isDark 
+          ? '<i class="fas fa-sun"></i>' 
+          : '<i class="fas fa-moon"></i>';
+      };
+
+      updateThemeIcon();
+
+      // Insert it as the first icon button in header actions
+      const firstChild = headerActions.firstChild;
+      if (firstChild) {
+        headerActions.insertBefore(themeBtn, firstChild);
       } else {
-        headerActions.appendChild(resetBtn);
+        headerActions.appendChild(themeBtn);
       }
-      resetBtn.addEventListener('click', resetBaseDate);
+
+      themeBtn.addEventListener('click', () => {
+        const current = document.body.getAttribute('data-theme') || 'light';
+        const next = current === 'light' ? 'dark' : 'light';
+        
+        document.body.setAttribute('data-theme', next);
+        localStorage.setItem('pharma_theme', next);
+
+        // Update sidebar label if it exists
+        if (els.themeLabel) {
+          els.themeLabel.textContent = next === 'light' ? 'Dark Mode' : 'Light Mode';
+        }
+
+        updateThemeIcon();
+      });
     }
 
     // Global History / Activity Log button
@@ -84,16 +107,11 @@ document.addEventListener('DOMContentLoaded', () => {
       historyBtn.setAttribute('aria-label', 'View stock change history log');
       historyBtn.innerHTML = '<i class="fas fa-history"></i>';
 
-      const resetBtn = document.getElementById('reset-base-date');
-      if (resetBtn && resetBtn.parentNode === headerActions) {
-        headerActions.insertBefore(historyBtn, resetBtn);
+      const addBtn = els.addBtn;
+      if (addBtn && addBtn.parentNode === headerActions) {
+        headerActions.insertBefore(historyBtn, addBtn);
       } else {
-        const addBtn = els.addBtn;
-        if (addBtn && addBtn.parentNode === headerActions) {
-          headerActions.insertBefore(historyBtn, addBtn);
-        } else {
-          headerActions.appendChild(historyBtn);
-        }
+        headerActions.appendChild(historyBtn);
       }
 
       historyBtn.addEventListener('click', showGlobalHistory);
@@ -120,15 +138,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btn.addEventListener('click', async () => {
       if (deferredPrompt) {
+        // Best case: browser is ready to show native install prompt
         deferredPrompt.prompt();
         const { outcome } = await deferredPrompt.userChoice;
         console.log('[PWA] User install outcome:', outcome);
         deferredPrompt = null;
-        btn.remove();
+
+        if (outcome === 'accepted') {
+          btn.remove();
+        }
       } else {
-        alert("To install the app:\n\n1. Open Chrome/Edge on Android\n2. Tap the menu (⋮)\n3. Choose 'Install app' or 'Add to Home screen'");
+        // Fallback instructions (very common on first visits)
+        alert(
+          "To install PharmaStock on your phone:\n\n" +
+          "1. Open this page in Chrome or Edge on Android\n" +
+          "2. Tap the menu (⋮) in the top right\n" +
+          "3. Tap 'Install app' or 'Add to Home screen'\n\n" +
+          "Note: The automatic install suggestion usually appears after using the app 2–3 times."
+        );
       }
     });
+  }
+
+  // Inject Reset Base Date button into the sidebar (moved from header)
+  function injectSidebarResetBaseButton() {
+    const sidebarFooter = document.querySelector('.sidebar-footer');
+    if (!sidebarFooter || document.getElementById('sidebar-reset-base-date')) return;
+
+    const resetAllBtn = document.getElementById('reset-all');
+
+    const btn = document.createElement('button');
+    btn.id = 'sidebar-reset-base-date';
+    btn.className = 'gbtn w-full';
+    btn.innerHTML = '<i class="fas fa-undo"></i> Reset Base Date';
+
+    // Insert before Reset All Data if it exists, otherwise append
+    if (resetAllBtn && resetAllBtn.parentNode === sidebarFooter) {
+      sidebarFooter.insertBefore(btn, resetAllBtn);
+    } else {
+      sidebarFooter.appendChild(btn);
+    }
+
+    btn.addEventListener('click', resetBaseDate);
   }
 
   // ==========================================
@@ -622,17 +673,77 @@ function getEffectiveStock(med) {
   // TTS
   // ==========================================
   function setupTTS() {
+    const voiceSelect = els.ttsVoice;
+
+    function populateVoices() {
+      if (!voiceSelect) return;
+
+      const voices = speechSynthesis.getVoices();
+
+      // If there are no real voices (or only the default one), remove the dropdown entirely
+      if (voices.length <= 1) {
+        const voiceGroup = voiceSelect.closest('.form-group');
+        if (voiceGroup) {
+          voiceGroup.remove();
+        }
+        return;
+      }
+
+      // Populate the dropdown
+      voiceSelect.innerHTML = '';
+
+      voices.forEach((voice, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${voice.name} (${voice.lang})`;
+        voiceSelect.appendChild(option);
+      });
+
+      // Restore previously selected voice if available
+      const savedVoice = localStorage.getItem('pharma_tts_voice');
+      if (savedVoice !== null && voices[savedVoice]) {
+        voiceSelect.value = savedVoice;
+      }
+
+      // Save selection when changed
+      voiceSelect.addEventListener('change', () => {
+        localStorage.setItem('pharma_tts_voice', voiceSelect.value);
+      });
+    }
+
+    // Voices are loaded asynchronously in most browsers
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = populateVoices;
+    }
+    populateVoices(); // Try immediately in case voices are already available
+
+    // Test button
     if (els.ttsTest) {
       els.ttsTest.addEventListener('click', () => {
         const utterance = new SpeechSynthesisUtterance("This is a test of the pharmaceutical stock tracker.");
+        applySelectedVoice(utterance);
         speechSynthesis.speak(utterance);
       });
     }
   }
 
+  function applySelectedVoice(utterance) {
+    const voiceSelect = document.getElementById('tts-voice');
+    if (!voiceSelect || voiceSelect.options.length === 0) return;
+
+    const voices = speechSynthesis.getVoices();
+    const selectedIndex = parseInt(voiceSelect.value, 10);
+
+    if (voices[selectedIndex]) {
+      utterance.voice = voices[selectedIndex];
+    }
+  }
+
   function speakMed(med) {
     const text = `${med.name}. Current stock: ${getEffectiveStock(med)} units remaining.`;
-    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    const utterance = new SpeechSynthesisUtterance(text);
+    applySelectedVoice(utterance);
+    speechSynthesis.speak(utterance);
   }
 
   // ==========================================
@@ -652,8 +763,8 @@ function getEffectiveStock(med) {
       localStorage.setItem('pharma_theme', next);
     });
 
-    els.sidebarToggle?.addEventListener('click', () => els.sidebar.classList.add('open'));
-    els.sidebarClose?.addEventListener('click', () => els.sidebar.classList.remove('open'));
+    // Sidebar gestures (slide to close + backdrop). This also handles open/close.
+    setupSidebarGestures();
 
     // Enable critical stock notifications
     els.enableNotifications = document.getElementById('enable-notifications');
@@ -669,12 +780,6 @@ function getEffectiveStock(med) {
     });
 
     els.addBtn?.addEventListener('click', () => alert("Add Medication feature coming soon!"));
-
-    // Add Reset Base Date button functionality
-    const resetDateBtn = document.getElementById('reset-base-date');
-    if (resetDateBtn) {
-      resetDateBtn.addEventListener('click', resetBaseDate);
-    }
   }
 
   function showToast(message) {
@@ -691,43 +796,12 @@ function getEffectiveStock(med) {
   // ==========================================
   let deferredPrompt;
 
-  // Handle PWA install prompt
+  // Handle PWA install prompt (Chrome will fire this when it thinks the user is engaged)
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    console.log('[PWA] Install prompt available');
-
-    // Optional: Show an install button in the UI
-    showInstallButton();
+    console.log('[PWA] Install prompt is available from the browser');
   });
-
-  function showInstallButton() {
-    // Inject a subtle install button in the header if possible
-    const headerActions = document.querySelector('.app-header .header-actions');
-    if (!headerActions || document.getElementById('install-app-btn')) return;
-
-    const btn = document.createElement('button');
-    btn.id = 'install-app-btn';
-    btn.className = 'icon-btn';
-    btn.title = 'Install PharmaStock App';
-    btn.innerHTML = '<i class="fas fa-download"></i>';
-
-    const historyBtn = document.getElementById('global-history-btn');
-    if (historyBtn) {
-      headerActions.insertBefore(btn, historyBtn);
-    } else {
-      headerActions.appendChild(btn);
-    }
-
-    btn.addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log('[PWA] User install choice:', outcome);
-      btn.remove();
-      deferredPrompt = null;
-    });
-  }
 
   // Request notification permission + send critical alert
   async function requestNotificationPermission() {
@@ -782,11 +856,169 @@ function getEffectiveStock(med) {
   }
 
   // ==========================================
+  // Sidebar Slide-to-Close Gesture + Backdrop
+  // ==========================================
+  let sidebarBackdrop = null;
+
+  function setupSidebarGestures() {
+    const sidebar = els.sidebar;
+    if (!sidebar) return;
+
+    let startX = 0;
+    let currentX = 0;
+    let isDragging = false;
+
+    // Create backdrop once
+    function ensureBackdrop() {
+      if (sidebarBackdrop) return;
+
+      sidebarBackdrop = document.createElement('div');
+      sidebarBackdrop.className = 'sidebar-backdrop';
+      sidebarBackdrop.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 999;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        touch-action: none;
+      `;
+      document.body.appendChild(sidebarBackdrop);
+
+      // Tap on backdrop closes sidebar
+      sidebarBackdrop.addEventListener('click', () => {
+        closeSidebar();
+      });
+
+      // Also allow swiping on the backdrop
+      sidebarBackdrop.addEventListener('touchstart', handleTouchStart);
+      sidebarBackdrop.addEventListener('touchmove', handleTouchMove);
+      sidebarBackdrop.addEventListener('touchend', handleTouchEnd);
+    }
+
+    function openSidebar() {
+      sidebar.classList.add('open');
+      ensureBackdrop();
+      // Trigger fade in
+      requestAnimationFrame(() => {
+        if (sidebarBackdrop) sidebarBackdrop.style.opacity = '1';
+      });
+    }
+
+    function closeSidebar() {
+      const wasDragging = !!sidebar.style.transform;
+
+      if (wasDragging) {
+        // Animate from current dragged position
+        sidebar.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+        sidebar.style.transform = `translateX(-100%)`;
+      } else {
+        // Normal close (X button or backdrop tap) - let CSS handle it
+        sidebar.style.transition = '';
+      }
+
+      sidebar.classList.remove('open');
+
+      setTimeout(() => {
+        sidebar.style.transition = '';
+        sidebar.style.transform = '';
+      }, 300);
+
+      if (sidebarBackdrop) {
+        sidebarBackdrop.style.opacity = '0';
+        setTimeout(() => {
+          if (sidebarBackdrop && sidebarBackdrop.parentNode) {
+            sidebarBackdrop.parentNode.removeChild(sidebarBackdrop);
+          }
+          sidebarBackdrop = null;
+        }, 300);
+      }
+    }
+
+    // Override the original toggle to use our functions
+    if (els.sidebarToggle) {
+      els.sidebarToggle.onclick = () => openSidebar();
+    }
+    if (els.sidebarClose) {
+      els.sidebarClose.onclick = () => closeSidebar();
+    }
+
+    function handleTouchStart(e) {
+      const target = e.currentTarget;
+      // Only start drag if sidebar is open
+      if (!sidebar.classList.contains('open')) return;
+
+      startX = e.touches[0].clientX;
+      currentX = startX;
+      isDragging = true;
+
+      sidebar.style.transition = 'none';
+      if (sidebarBackdrop) sidebarBackdrop.style.transition = 'none';
+    }
+
+    function handleTouchMove(e) {
+      if (!isDragging || !sidebar.classList.contains('open')) return;
+
+      currentX = e.touches[0].clientX;
+      const deltaX = currentX - startX;
+
+      // Only drag left
+      if (deltaX < 0) {
+        const translate = Math.max(deltaX, -320); // don't drag too far
+        sidebar.style.transform = `translateX(${translate}px)`;
+
+        // Fade backdrop as user swipes
+        if (sidebarBackdrop) {
+          const progress = Math.min(Math.abs(deltaX) / 200, 1);
+          sidebarBackdrop.style.opacity = (1 - progress * 0.6).toString();
+        }
+      }
+    }
+
+    function handleTouchEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      sidebar.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+      if (sidebarBackdrop) {
+        sidebarBackdrop.style.transition = 'opacity 0.3s ease';
+      }
+
+      const deltaX = currentX - startX;
+
+      if (deltaX < -80) {
+        // Close with smooth animation from current dragged position
+        sidebar.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+        sidebar.style.transform = `translateX(-100%)`;
+
+        // Let the animation finish, then do the clean close (handles backdrop)
+        setTimeout(() => {
+          sidebar.classList.remove('open');
+          sidebar.style.transition = '';
+          sidebar.style.transform = '';
+          closeSidebar();
+        }, 280);
+      } else {
+        // Snap back
+        sidebar.style.transition = 'transform 0.3s ease';
+        sidebar.style.transform = '';
+        if (sidebarBackdrop) sidebarBackdrop.style.opacity = '1';
+      }
+    }
+
+    // Attach swipe handlers to the sidebar itself
+    sidebar.addEventListener('touchstart', handleTouchStart, { passive: true });
+    sidebar.addEventListener('touchmove', handleTouchMove, { passive: false });
+    sidebar.addEventListener('touchend', handleTouchEnd);
+  }
+
+  // ==========================================
   // Initialization
   // ==========================================
   function init() {
     injectHeaderButtons();
     injectInstallButton();
+    injectSidebarResetBaseButton();
 
     // Start listening to the global base date (this makes daily reduction consistent across devices)
     listenToGlobalBaseDate();
@@ -808,6 +1040,15 @@ function getEffectiveStock(med) {
     const savedTheme = localStorage.getItem('pharma_theme') || 'light';
     document.body.setAttribute('data-theme', savedTheme);
     els.themeLabel.textContent = savedTheme === 'light' ? 'Dark Mode' : 'Light Mode';
+
+    // Sync header theme toggle icon
+    const headerThemeBtn = document.getElementById('header-theme-toggle');
+    if (headerThemeBtn) {
+      const isDark = savedTheme === 'dark';
+      headerThemeBtn.innerHTML = isDark 
+        ? '<i class="fas fa-sun"></i>' 
+        : '<i class="fas fa-moon"></i>';
+    }
 
     // Optionally prompt for notifications (user can also trigger manually)
     setTimeout(() => {

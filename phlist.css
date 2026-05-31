@@ -7,11 +7,11 @@
   --font-sans: 'Inter', system_ui, -apple-system, sans-serif;
   --font-display: 'Space Grotesk', 'Inter', sans-serif;
   
-  /* Light theme glass */
-  --bg: #f1f5f9;
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.9);
-  --glass-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  /* Dark Gray Light theme */
+  --bg: #c8d0db;
+  --glass-bg: rgba(235, 240, 248, 0.78);
+  --glass-border: rgba(140, 150, 165, 0.40);
+  --glass-shadow: 0 12px 36px rgba(15, 23, 42, 0.15);
   
   --text: #0f172a;
   --text-muted: #475569;
@@ -81,7 +81,7 @@ body {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(14, 164, 122, 0.12);
-  background: rgba(255,255,255,0.9);
+  background: rgba(245, 248, 253, 0.95);
 }
 
 [data-theme="dark"] .glass-input {
@@ -113,7 +113,7 @@ body {
 .gbtn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  background: rgba(255,255,255,0.95);
+  background: rgba(240, 245, 252, 0.90);
 }
 
 [data-theme="dark"] .gbtn:hover {
@@ -168,7 +168,7 @@ body {
 }
 
 .icon-btn:hover {
-  background: rgba(255,255,255,0.9);
+  background: rgba(240, 245, 252, 0.88);
   transform: translateY(-1px);
 }
 
@@ -540,20 +540,23 @@ body {
 .sidebar {
   position: fixed;
   top: 0;
-  left: -320px;
+  left: 0;
   width: 300px;
   height: 100vh;
   background: var(--glass-bg);
   border-right: 1px solid var(--glass-border);
   z-index: 1000;
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   padding: 20px;
   backdrop-filter: blur(20px);
 }
 
-.sidebar.open { left: 0; }
+.sidebar.open {
+  transform: translateX(0);
+}
 
 .sidebar-header {
   display: flex;
@@ -606,6 +609,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Make sidebar footer buttons handle long translations gracefully */
+.sidebar-footer .gbtn {
+  white-space: normal;           /* allow text to wrap instead of overflowing */
+  text-align: center;
+  padding: 9px 12px;
+  line-height: 1.25;
+  font-size: 0.9rem;             /* slightly smaller to help with long text */
+  min-height: 46px;              /* maintain good tap target */
 }
 
 /* Modal */

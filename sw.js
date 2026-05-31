@@ -37,12 +37,17 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - serve from cache when offline (basic)
+// Fetch event - serve from cache, with network fallback
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      // Return cached version or fetch from network
-      return response || fetch(event.request);
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request).then((networkResponse) => {
+        // Optionally cache new requests
+        return networkResponse;
+      });
     })
   );
 });
