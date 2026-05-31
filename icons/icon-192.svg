@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="g1" x1="20" y1="30" x2="170" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="20" y1="30" x2="90" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Main capsule body -->
+  <rect x="26" y="52" width="140" height="88" rx="44" fill="url(#g1)"/>
+  
+  <!-- Left lighter section -->
+  <rect x="26" y="52" width="70" height="88" rx="44" fill="url(#g2)"/>
+  
+  <!-- Vertical divider -->
+  <rect x="93" y="52" width="6" height="88" fill="#065f46"/>
+  
+  <!-- Highlight -->
+  <ellipse cx="55" cy="78" rx="22" ry="14" fill="#ffffff" opacity="0.28"/>
+  
+  <!-- Small shine on right side -->
+  <ellipse cx="145" cy="105" rx="14" ry="9" fill="#ffffff" opacity="0.15"/>
+</svg>

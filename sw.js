@@ -7,7 +7,9 @@ const urlsToCache = [
   './index.html',
   './phlist.css',
   './phlist.js',
-  './manifest.json'
+  './manifest.json',
+  './icons/icon-192.svg',
+  './icons/icon-512.svg'
 ];
 
 // Install event - cache basic assets

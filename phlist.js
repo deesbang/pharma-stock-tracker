@@ -100,6 +100,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Inject "Install App" button into the settings sidebar
+  function injectInstallButton() {
+    const sidebarFooter = document.querySelector('.sidebar-footer');
+    if (!sidebarFooter || document.getElementById('install-app-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'install-app-btn';
+    btn.className = 'gbtn w-full';
+    btn.innerHTML = '<i class="fas fa-download"></i> Install App on Phone';
+
+    // Insert before the "Enable Notifications" button if it exists
+    const notifBtn = document.getElementById('enable-notifications');
+    if (notifBtn) {
+      sidebarFooter.insertBefore(btn, notifBtn);
+    } else {
+      sidebarFooter.appendChild(btn);
+    }
+
+    btn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log('[PWA] User install outcome:', outcome);
+        deferredPrompt = null;
+        btn.remove();
+      } else {
+        alert("To install the app:\n\n1. Open Chrome/Edge on Android\n2. Tap the menu (⋮)\n3. Choose 'Install app' or 'Add to Home screen'");
+      }
+    });
+  }
+
   // ==========================================
   // Daily Reduction System (Base Date) - Now Global via Firestore
   // ==========================================
@@ -755,6 +786,7 @@ function getEffectiveStock(med) {
   // ==========================================
   function init() {
     injectHeaderButtons();
+    injectInstallButton();
 
     // Start listening to the global base date (this makes daily reduction consistent across devices)
     listenToGlobalBaseDate();
