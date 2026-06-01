@@ -203,6 +203,44 @@ document.addEventListener('DOMContentLoaded', () => {
     return Math.max(0, diffDays);
   }
 
+  // Returns the exact local Date when the next daily reduction will occur
+  function getNextReductionDate() {
+    const base = globalBaseDate || normalizeToStartOfDay(new Date());
+    const currentDays = getDaysPassed();
+
+    // The next reduction happens at the start of the day when daysPassed increases
+    const nextDay = new Date(base);
+    nextDay.setDate(nextDay.getDate() + currentDays + 1);
+    nextDay.setHours(0, 0, 0, 0);
+
+    return nextDay;
+  }
+
+  // Returns a human-readable object with time remaining until next reduction
+  function getTimeUntilNextReduction() {
+    const nextReduction = getNextReductionDate();
+    const now = new Date();
+
+    let diffMs = nextReduction.getTime() - now.getTime();
+
+    if (diffMs <= 0) {
+      return { days: 0, hours: 0, minutes: 0, seconds: 0, isDue: true };
+    }
+
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    diffMs -= days * (1000 * 60 * 60 * 24);
+
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    diffMs -= hours * (1000 * 60 * 60);
+
+    const minutes = Math.floor(diffMs / (1000 * 60));
+    diffMs -= minutes * (1000 * 60);
+
+    const seconds = Math.floor(diffMs / 1000);
+
+    return { days, hours, minutes, seconds, isDue: false };
+  }
+
   function listenToGlobalBaseDate() {
     db.collection('settings').doc('baseDate').onSnapshot((doc) => {
       if (doc.exists && doc.data().date) {
@@ -212,8 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // No global base date set yet — default to today (will be set on first reset)
         globalBaseDate = normalizeToStartOfDay(new Date());
       }
-      // Re-render so all devices see updated stock numbers immediately
+      // Re-render + restart countdown when base date changes
       renderAll();
+      startReductionCountdown();
     }, (error) => {
       console.error("Error listening to global base date:", error);
     });
@@ -303,11 +342,49 @@ function getEffectiveStock(med) {
     });
   }
 
+  // Live countdown until the next daily reduction
+  let reductionCountdownInterval = null;
+
+  function updateNextReductionCountdown() {
+    const el = document.getElementById('next-reduction-value');
+    if (!el) return;
+
+    const remaining = getTimeUntilNextReduction();
+
+    if (remaining.isDue) {
+      el.textContent = 'Due now';
+      el.style.color = 'var(--danger)';
+      return;
+    }
+
+    let text = '';
+    if (remaining.days > 0) text += `${remaining.days}d `;
+    text += `${remaining.hours}h ${remaining.minutes}m`;
+
+    el.textContent = text;
+    el.style.color = '';
+  }
+
+  function startReductionCountdown() {
+    // Clear any previous interval
+    if (reductionCountdownInterval) clearInterval(reductionCountdownInterval);
+
+    updateNextReductionCountdown();
+
+    // Update every 30 seconds (good balance between accuracy and performance)
+    reductionCountdownInterval = setInterval(() => {
+      updateNextReductionCountdown();
+    }, 30000);
+  }
+
   function renderAll() {
     updateCurrentDate();
     renderCategoryFilterOptions();
     renderGrid();
     updateStats();
+
+    // Update the next reduction countdown
+    updateNextReductionCountdown();
 
     // Trigger critical stock notifications (if permission granted)
     checkAndNotifyCriticalStock();
@@ -1135,6 +1212,9 @@ function getEffectiveStock(med) {
         ? '<i class="fas fa-sun"></i>' 
         : '<i class="fas fa-moon"></i>';
     }
+
+    // Start the live countdown to next daily reduction
+    startReductionCountdown();
 
     // Optionally prompt for notifications (user can also trigger manually)
     setTimeout(() => {
